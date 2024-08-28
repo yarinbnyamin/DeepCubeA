@@ -8,7 +8,7 @@ from random import randrange
 
 
 class NPuzzleState(State):
-    __slots__ = ['tiles', 'hash']
+    __slots__ = ["tiles", "hash"]
 
     def __init__(self, tiles: np.ndarray):
         self.tiles: np.ndarray = tiles
@@ -25,10 +25,10 @@ class NPuzzleState(State):
 
 
 class NPuzzle(Environment):
-    moves: List[str] = ['U', 'D', 'L', 'R']
-    moves_rev: List[str] = ['D', 'U', 'R', 'L']
+    moves: List[str] = ["U", "D", "L", "R"]
+    moves_rev: List[str] = ["D", "U", "R", "L"]
 
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, full_state: str = "full"):
         super().__init__()
 
         self.dim: int = dim
@@ -38,12 +38,35 @@ class NPuzzle(Environment):
             self.dtype = np.int
 
         # Solved state
-        self.goal_tiles: np.ndarray = np.concatenate((np.arange(1, self.dim * self.dim), [0])).astype(self.dtype)
+        if full_state == "full":
+            self.goal_tiles: np.ndarray = np.concatenate(
+                (np.arange(1, self.dim * self.dim), [0])
+            ).astype(self.dtype)
+        elif full_state == "top":
+            self.goal_tiles: np.ndarray = np.concatenate(
+                (
+                    np.arange(1, int(self.dim * self.dim // 2 + 1)),
+                    [0],
+                    [-1] * int(self.dim * self.dim // 2),
+                )
+            ).astype(self.dtype)
+        elif full_state == "bottom":
+            self.goal_tiles: np.ndarray = np.concatenate(
+                (
+                    [-1] * int(self.dim * self.dim // 2),
+                    np.arange(
+                        int(self.dim * self.dim // 2 + 1), int(self.dim * self.dim)
+                    ),
+                    [0],
+                )
+            ).astype(self.dtype)
 
         # Next state ops
         self.swap_zero_idxs: np.ndarray = self._get_swap_zero_idxs(self.dim)
 
-    def next_state(self, states: List[NPuzzleState], action: int) -> Tuple[List[NPuzzleState], List[float]]:
+    def next_state(
+        self, states: List[NPuzzleState], action: int
+    ) -> Tuple[List[NPuzzleState], List[float]]:
         # initialize
         states_np = np.stack([x.tiles for x in states], axis=0)
         states_next_np: np.ndarray = states_np.copy()
@@ -56,7 +79,9 @@ class NPuzzle(Environment):
         states_next_np, _, transition_costs = self._move_np(states_np, z_idxs, action)
 
         # make states
-        states_next: List[NPuzzleState] = [NPuzzleState(x) for x in list(states_next_np)]
+        states_next: List[NPuzzleState] = [
+            NPuzzleState(x) for x in list(states_next_np)
+        ]
 
         return states_next, transition_costs
 
@@ -66,12 +91,16 @@ class NPuzzle(Environment):
 
         return self.next_state(states, move_rev_idx)[0]
 
-    def generate_goal_states(self, num_states: int, np_format: bool = False) -> Union[List[NPuzzleState], np.ndarray]:
+    def generate_goal_states(
+        self, num_states: int, np_format: bool = False
+    ) -> Union[List[NPuzzleState], np.ndarray]:
         if np_format:
             goal_np: np.ndarray = np.expand_dims(self.goal_tiles.copy(), 0)
             solved_states: np.ndarray = np.repeat(goal_np, num_states, axis=0)
         else:
-            solved_states: List[NPuzzleState] = [NPuzzleState(self.goal_tiles.copy()) for _ in range(num_states)]
+            solved_states: List[NPuzzleState] = [
+                NPuzzleState(self.goal_tiles.copy()) for _ in range(num_states)
+            ]
 
         return solved_states
 
@@ -93,15 +122,18 @@ class NPuzzle(Environment):
 
     def get_nnet_model(self) -> nn.Module:
         state_dim: int = self.dim * self.dim
-        nnet = ResnetModel(state_dim, self.dim ** 2, 5000, 1000, 4, 1, True)
+        nnet = ResnetModel(state_dim, self.dim**2, 5000, 1000, 4, 1, True)
 
         return nnet
 
-    def generate_states(self, num_states: int, backwards_range: Tuple[int, int]) -> Tuple[List[NPuzzleState],
-                                                                                          List[int]]:
-        assert (num_states > 0)
-        assert (backwards_range[0] >= 0)
-        assert self.fixed_actions, "Environments without fixed actions must implement their own method"
+    def generate_states(
+        self, num_states: int, backwards_range: Tuple[int, int]
+    ) -> Tuple[List[NPuzzleState], List[int]]:
+        assert num_states > 0
+        assert backwards_range[0] >= 0
+        assert (
+            self.fixed_actions
+        ), "Environments without fixed actions must implement their own method"
 
         # Initialize
         scrambs: List[int] = list(range(backwards_range[0], backwards_range[1] + 1))
@@ -125,7 +157,9 @@ class NPuzzle(Environment):
             idxs: np.ndarray = np.random.choice(idxs, subset_size)
 
             move: int = randrange(num_env_moves)
-            states_np[idxs], z_idxs[idxs], _ = self._move_np(states_np[idxs], z_idxs[idxs], move)
+            states_np[idxs], z_idxs[idxs], _ = self._move_np(
+                states_np[idxs], z_idxs[idxs], move
+            )
 
             num_back_moves[idxs] = num_back_moves[idxs] + 1
 
@@ -134,7 +168,9 @@ class NPuzzle(Environment):
         return states, scramble_nums.tolist()
 
     def expand(self, states: List[State]) -> Tuple[List[List[State]], List[np.ndarray]]:
-        assert self.fixed_actions, "Environments without fixed actions must implement their own method"
+        assert (
+            self.fixed_actions
+        ), "Environments without fixed actions must implement their own method"
 
         # initialize
         num_states: int = len(states)
@@ -172,7 +208,9 @@ class NPuzzle(Environment):
         return states_exp, tc_l
 
     def _get_swap_zero_idxs(self, n: int) -> np.ndarray:
-        swap_zero_idxs: np.ndarray = np.zeros((n ** 2, len(NPuzzle.moves)), dtype=self.dtype)
+        swap_zero_idxs: np.ndarray = np.zeros(
+            (n**2, len(NPuzzle.moves)), dtype=self.dtype
+        )
         for moveIdx, move in enumerate(NPuzzle.moves):
             for i in range(n):
                 for j in range(n):
@@ -182,39 +220,42 @@ class NPuzzle(Environment):
                     state[i, j] = 0
 
                     is_eligible: bool = False
-                    if move == 'U':
+                    if move == "U":
                         is_eligible = i < (n - 1)
-                    elif move == 'D':
+                    elif move == "D":
                         is_eligible = i > 0
-                    elif move == 'L':
+                    elif move == "L":
                         is_eligible = j < (n - 1)
-                    elif move == 'R':
+                    elif move == "R":
                         is_eligible = j > 0
 
                     if is_eligible:
                         swap_i: int = -1
                         swap_j: int = -1
-                        if move == 'U':
+                        if move == "U":
                             swap_i = i + 1
                             swap_j = j
-                        elif move == 'D':
+                        elif move == "D":
                             swap_i = i - 1
                             swap_j = j
-                        elif move == 'L':
+                        elif move == "L":
                             swap_i = i
                             swap_j = j + 1
-                        elif move == 'R':
+                        elif move == "R":
                             swap_i = i
                             swap_j = j - 1
 
-                        swap_zero_idxs[z_idx, moveIdx] = np.ravel_multi_index((swap_i, swap_j), (n, n))
+                        swap_zero_idxs[z_idx, moveIdx] = np.ravel_multi_index(
+                            (swap_i, swap_j), (n, n)
+                        )
                     else:
                         swap_zero_idxs[z_idx, moveIdx] = z_idx
 
         return swap_zero_idxs
 
-    def _move_np(self, states_np: np.ndarray, z_idxs: np.array,
-                 action: int) -> Tuple[np.ndarray, np.array, List[float]]:
+    def _move_np(
+        self, states_np: np.ndarray, z_idxs: np.array, action: int
+    ) -> Tuple[np.ndarray, np.array, List[float]]:
         states_next_np: np.ndarray = states_np.copy()
 
         # get index to swap with zero
